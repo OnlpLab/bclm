@@ -1,5 +1,7 @@
 import pandas as pd
-
+import unicodedata
+from .hebtokenizer import tokenize as hebtokenize
+from .hebtokenizer import alternative_scanner
 
 TOK_FIELDS = ['sent_id', 'token_id', 'token_str']
 
@@ -83,3 +85,49 @@ def get_feature_lists(df, fields, sent_id='sent_id'):
     for field in fields:
         feats.append(df.groupby(sent_id)[field].apply(lambda x: (x.values.tolist())))
     return feats
+
+
+### Tokenization
+
+def clean_hebchars(text):
+    norm = unicodedata.normalize('NFKD', text)
+    text =''.join([c for c in norm if not unicodedata.combining(c)]) 
+    #line = line.replace('־', '-')
+    # maqaf
+    text = text.replace(u'\u05be', '-')
+
+    #line = line.replace('׳', '\'')
+    #geresh
+    text = text.replace(u'\u05f3', '\'')
+
+    #line = line.replace('״', '"')
+    #gershayim
+    text = text.replace(u'\u05f4', '"')
+    #line = line.replace('”', '"')
+    #line = line.replace('„', '"')
+    #en dash
+    text = text.replace(u'\u2013', '-')
+    #em dash
+    text = text.replace(u'\u2014', '-')
+    return text
+
+def tokenize(sent, alt_scan=True, clean_junk=True, clean_heb_chars=True):
+    if clean_heb_chars:
+        sent = clean_hebchars(sent.strip())
+    if alt_scan:
+        tok = hebtokenize(sent, alternative_scanner)
+    else:
+        tok = hebtokenize(sent)
+
+    last_type, last_form = tok[-1]
+    if len(last_form)>1 and last_type!='PUNCT' and last_form[-1] in ('?', '!', '.'):
+        tok[-1] = (last_type, last_form[:-1])
+        tok.append(('PUNCT', last_form[-1]))
+
+    final = []
+    for c, t in tok: 
+        if clean_junk and c=='JUNK':
+            continue
+        final.append(t)
+    
+    return final
