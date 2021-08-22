@@ -3,48 +3,8 @@ from conllu import parse
 from collections import OrderedDict
 import os
 import numpy as np
-
-
-BCLM_FOLDER = os.path.dirname(os.path.realpath(__file__))
-DATA_FOLDER = os.path.join(BCLM_FOLDER, 'data')
-YAP_OUT_FOLDER = os.path.join(DATA_FOLDER, 'yap_outputs')
-
-TREEBANK_TOKEN_PATHS = {
-                'train': os.path.join(YAP_OUT_FOLDER, 'spmrl_train_tokens.txt'),
-                'dev': os.path.join(YAP_OUT_FOLDER, 'spmrl_dev_tokens.txt'),
-                'test': os.path.join(YAP_OUT_FOLDER, 'spmrl_test_tokens.txt'),
-                }
-
-YAP_OUTPUT_PATHS = {
-                    'seg': {
-                            'train': os.path.join(YAP_OUT_FOLDER, 'spmrl_train_seg.conll'),
-                            'dev': os.path.join(YAP_OUT_FOLDER, 'spmrl_dev_seg.conll'),
-                            'test': os.path.join(YAP_OUT_FOLDER, 'spmrl_test_seg.conll'),
-                    },
-                    'map': {
-                            'train': os.path.join(YAP_OUT_FOLDER, 'spmrl_train_map.conll'),
-                            'dev': os.path.join(YAP_OUT_FOLDER, 'spmrl_dev_map.conll'),
-                            'test': os.path.join(YAP_OUT_FOLDER, 'spmrl_test_map.conll'),
-                    },
-                    'dep': {
-                            'train': os.path.join(YAP_OUT_FOLDER, 'spmrl_train_dep.conll'),
-                            'dev': os.path.join(YAP_OUT_FOLDER, 'spmrl_dev_dep.conll'),
-                            'test': os.path.join(YAP_OUT_FOLDER, 'spmrl_test_dep.conll'),
-                    },
-                }
-
-LATTICES_PATHS = {
-                    'train': os.path.join(YAP_OUT_FOLDER, 'spmrl_train.lattices'),
-                    'dev': os.path.join(YAP_OUT_FOLDER, 'spmrl_dev.lattices'),
-                    'test': os.path.join(YAP_OUT_FOLDER, 'spmrl_test.lattices'),
-                }
-
-DF_PATHS = {
-            'spmrl': os.path.join(DATA_FOLDER, 'spdf_fixed.csv.gz'),
-            'ud': os.path.join(DATA_FOLDER, 'uddf_fixed.csv.gz'),
-            'yap_dev': os.path.join(YAP_OUT_FOLDER, 'yap_dev.csv.gz'),
-            'yap_test': os.path.join(YAP_OUT_FOLDER, 'yap_test.csv.gz'),
-           }
+from io import StringIO
+from .local_paths import *
 
 
 def read_dataframe(corpus, remove_duplicates=False, remove_very_similar=False, subset=None):
@@ -54,13 +14,17 @@ def read_dataframe(corpus, remove_duplicates=False, remove_very_similar=False, s
     return df
 
 
-def read_treebank_conllu(path, remove_duplicates=False, remove_very_similar=False,
+def read_treebank_conllu(filepath_or_buffer, remove_duplicates=False, remove_very_similar=False,
                          expand_feats=True, expand_misc=True):
     # metadata must include sent_id (int)
     # if you want to remove duplicates or very similar, metadata must also include 
     # duplicate_sent_id and very_similar_sent_id
-    with open(path, 'r', encoding='utf8') as f:
-        sp_conllu = parse(f.read())
+    if isinstance(filepath_or_buffer, str):
+        with open(tokens_filepath_or_buffer, 'r', encoding='utf8') as f:
+            sp_conllu = parse(f.read())
+    elif isinstance(filepath_or_buffer, StringIO):
+        sp_conllu = parse(filepath_or_buffer.read())
+        
     fixed = []
     dup_to_remove = set()
     very_sim_to_remove = set()
@@ -99,10 +63,15 @@ def read_treebank_conllu(path, remove_duplicates=False, remove_very_similar=Fals
     return df
 
 
-def read_conll(path, add_head_stuff=False, comment='#'):
+def read_conll(filepath_or_buffer, add_head_stuff=False, comment='#'):
     # CoNLL file is tab delimeted with no quoting
     # quoting=3 is csv.QUOTE_NONE
-    df = (pd.read_csv(path, sep='\t', header=None, quoting=3, comment=comment,
+    if isinstance(filepath_or_buffer, str):
+        buffer = open(filepath_or_buffer, 'r', encoding='utf8')
+    elif isinstance(filepath_or_buffer, StringIO):
+        buffer = filepath_or_buffer
+        
+    df = (pd.read_csv(buffer, sep='\t', header=None, quoting=3, comment=comment,
                 names = ['id', 'form', 'lemma', 'upostag', 'xpostag', 'feats', 'head', 'deprel', 'deps', 'misc'])
                 # add sentence labels
                 .assign(sent_id = lambda x: (x.id==1).cumsum())
@@ -115,14 +84,35 @@ def read_conll(path, add_head_stuff=False, comment='#'):
                left_on=['sent', 'head'], right_index=True, how='left')
     return df
 
-from io import StringIO
+def parse_sentences(buffer):
+    sent = []
+    for line in buffer:
+        if line.strip() == "":
+            if not sent:
+                continue
+            yield "".join(sent).rstrip()
+            sent = []
+        else:
+            sent.append(line)
+    if sent:
+        yield "".join(sent).rstrip()
 
-def read_lattices(path):
-    dfs = []
-    for i, sent in enumerate(open(path, 'r', encoding='utf8').read().split('\n\n')):
-        dfs.append(pd.read_csv(StringIO(sent), sep='\t', header=None, quoting=3, 
+
+def read_lattice(lattice):
+    df = pd.read_csv(StringIO(lattice), sep='\t', header=None, quoting=3, 
                                names = ['ID1', 'ID2', 'form', 'lemma', 'upostag', 'xpostag', 'feats', 'token_id'])
-                  .assign(sent_id = i+1))
+    return df
+
+
+def read_lattices(filepath_or_buffer):
+    if isinstance(filepath_or_buffer, str):
+        buffer = open(filepath_or_buffer, 'r', encoding='utf8')
+    elif isinstance(filepath_or_buffer, StringIO):
+        buffer = filepath_or_buffer
+        
+    dfs = []
+    for i, sent in enumerate(parse_sentences(buffer)):
+        dfs.append(read_lattice(sent).assign(sent_id = i+1))
     
     return pd.concat(dfs).reset_index(drop=True)
 
@@ -145,18 +135,23 @@ def get_feats(s):
         return pd.Series()
 
     
-def read_yap_output(treebank_set='dev', tokens_path=None, dep_path=None, map_path=None, expand_feats=False, comment=None):
+def read_yap_output(treebank_set=None, tokens_filepath_or_buffer=None, dep_filepath_or_buffer=None, map_filepath_or_buffer=None, expand_feats=False, comment=None):
     if treebank_set is not None:
         tokens_path = TREEBANK_TOKEN_PATHS[treebank_set]
         dep_path = YAP_OUTPUT_PATHS['dep'][treebank_set]
         map_path = YAP_OUTPUT_PATHS['map'][treebank_set]
-        
+
+    if isinstance(tokens_filepath_or_buffer, str):
+        tok_buffer = open(tokens_filepath_or_buffer, 'r', encoding='utf8')
+    elif isinstance(tokens_filepath_or_buffer, StringIO):
+        tok_buffer = tokens_filepath_or_buffer
+
     tokens = dict(flatten([[(str(j+1)+'_'+str(i+1), tok) for i, tok in enumerate(sent.split('\n'))]
               for j, sent in 
-              enumerate(open(tokens_path, 'r').read().split('\n\n'))]))
-    
-    lattices = read_lattices(map_path)
-    dep = read_conll(dep_path, comment=comment)
+              enumerate(parse_sentences(tok_buffer))]))
+
+    lattices = read_lattices(map_filepath_or_buffer)
+    dep = read_conll(dep_filepath_or_buffer, comment=comment)
     df = (pd.concat([dep, lattices.token_id], axis=1)
           .assign(sent_tok = lambda x: x.sent_id.astype(str) + '_' + x.token_id.astype(str))
           .assign(token_str = lambda x: x.sent_tok.map(tokens))
