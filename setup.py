@@ -19,14 +19,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
     setuptools.setup(
         name='bclm',
-        version='1.0.2',
+        version='1.0.3',
         author="Dan Bareket",
         author_email="dbareket@gmail.com",
         description="THE go-to place for all Python Hebrew Treebank processing tasks.",
         long_description=long_description,
         long_description_content_type="text/markdown",
         url="https://github.com/OnlpLab/bclm",
-        download_url="https://github.com/OnlpLab/bclm/archive/refs/tags/v1.0.2-beta.tar.gz",
+        download_url="https://github.com/OnlpLab/bclm/archive/refs/tags/v1.0.3-beta.tar.gz",
         packages=['bclm', 'bclm/data'],
         package_data={'bclm': get_data_files('data'), 'bclm/data': get_data_files('yap')},
         install_requires=['pandas',
