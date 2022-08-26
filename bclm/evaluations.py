@@ -1,6 +1,6 @@
 import sys
 import pandas as pd
-from .readers import read_conll, read_dataframe, read_yap_output, read_treebank_conllu
+from .readers import read_dataframe, read_yap_output, read_treebank_conllu
 from collections import Counter
 
 
